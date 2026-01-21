@@ -1,10 +1,10 @@
 
-import logging
-import os
+import logging # Импортируем библиотеку для ведения журнала ошибок и сообщений
+import os # Модуль для работы с операционной системой (чтобы получить токен бота)
 
-from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
+from dotenv import load_dotenv # Библиотека для чтения переменных окружения из файла .env
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup # Импортируем нужные классы для работы с Телеграм API
+from telegram.ext import (  # Импортируем необходимые компоненты для работы с Telegram Bot API
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
@@ -12,22 +12,25 @@ from telegram.ext import (
     filters,
 )
 
-from kino_client import extract_kp_id, get_movie_info
-from storage import init_db, save_request
+from kino_client import extract_kp_id, get_movie_info # Импортируем функции для работы с кинозапросами
+from storage import init_db, save_request  # Импортируем функции для работы с базой данных
 
-logging.basicConfig(
+
+logging.basicConfig(  # Настраиваем ведение логов
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
+    level=logging.INFO,  # Уровень логирования установлен на INFO
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # Создаем экземпляр логера для текущего модуля
 
 
-load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+load_dotenv() # Читаем переменные окружения из файла .env
+BOT_TOKEN = os.getenv("BOT_TOKEN") # Получаем токен бота из переменных окружения
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    text = (
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None: # Команда /start
+    text = (  # Сообщение приветствия и инструкции для пользователя
         "Привет! Я бот, который показывает рейтинг фильма на Кинопоиске.\n\n"
         "Пришли мне ссылку вида:\n"
         "https://www.kinopoisk.ru/film/535341/\n\n"
@@ -36,51 +39,52 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/help — справка\n"
         "/stats — статистика запросов"
     )
-    await update.message.reply_text(text)
+    await update.message.reply_text(text)  # Ответ пользователю с инструкциями
 
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await start(update, context)
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None: # Команда /help
+    await start(update, context) # Просто переадресовываем команду /help в /start
 
 
-def format_movie_message(movie: dict) -> str:
-    title = movie.get("title") or "Фильм"
-    year = movie.get("year")
-    rating = movie.get("rating")
+def format_movie_message(movie: dict) -> str: # Функция для формирования красивого вывода информации о фильме
+    title = movie.get("title") or "Фильм" # Получаем название фильма или ставим дефолтное значение
+    year = movie.get("year") # Получаем год выпуска фильма
+    rating = movie.get("rating") # Получаем рейтинг фильма
 
-    lines = [f"🎬 {title}" + (f" ({year})" if year else "")]
-    if rating is not None:
-        lines.append(f"⭐ Рейтинг Кинопоиска: {rating}")
-        if rating >= 8.0:
+    lines = [f"🎬 {title}" + (f" ({year})" if year else "")] # Начинаем формировать сообщение с названия и года выпуска
+    if rating is not None: # Если рейтинг доступен
+        lines.append(f"⭐ Рейтинг Кинопоиска: {rating}") # Добавляем рейтинг
+        if rating >= 8.0:  # Логика оценки качества фильма
             lines.append("🔥 Обязателен к просмотру")
         elif rating >= 6.0:
             lines.append("👍 Крепкий фильм")
         else:
             lines.append("🤷‍♂️ На любителя")
     else:
-        lines.append("Рейтинг недоступен")
-
-    return "\n".join(lines)
+        lines.append("Рейтинг недоступен")  # Если рейтинг недоступен, отображаем соответствующее сообщение
 
 
-async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    message = update.message
-    url = message.text.strip()
+    return "\n".join(lines) # Объединяем сформированные строки в единое сообщение
+
+
+async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None: # Основная логика обработки ссылок
+    message = update.message # Получаем сообщение пользователя
+    url = message.text.strip() # Очищаем ссылку от пробелов
 
     await message.reply_text("⏳ Ищу информацию о фильме...")
 
-    movie_id = extract_kp_id(url)
-    if not movie_id:
-        await message.reply_text(
+    movie_id = extract_kp_id(url) # Извлекаем ID фильма из ссылки
+    if not movie_id: # Если ID не извлечён
+        await message.reply_text( # Предупреждение о неверной ссылке
             "❌ Похоже, это не ссылка на фильм Кинопоиска.\n"
             "Пришли, пожалуйста, полную ссылку вида:\n"
             "https://www.kinopoisk.ru/film/326/"
         )
-        return
+        return  # Завершаем обработку
 
-    movie = get_movie_info(movie_id)
-    if not movie:
-        await message.reply_text(
+    movie = get_movie_info(movie_id)  # Получаем информацию о фильме по его ID
+    if not movie: # Если не удалось получить информацию
+        await message.reply_text( # Сообщаем пользователю о проблемах
             "⚠️ Не удалось получить информацию о фильме.\n"
             "Возможно, сервис временно недоступен."
         )
@@ -88,58 +92,59 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     # сохраняем статистику
     save_request(
-        user_id=message.from_user.id,
-        username=message.from_user.username,
-        movie_id=movie_id,
-        rating=movie.get("rating"),
+        user_id=message.from_user.id,  # Пользовательский ID
+        username=message.from_user.username,  # Никнейм пользователя
+        movie_id=movie_id, # ID фильма
+        rating=movie.get("rating"), # Рейтинг фильма
     )
 
-    text = format_movie_message(movie)
+    text = format_movie_message(movie)  # Формируем красивое сообщение с информацией о фильме
 
-    keyboard = [
+    keyboard = [ # Создаем клавиатуру с кнопкой перехода на Кинопоиск
         [
             InlineKeyboardButton(
                 "🔗 Открыть на Кинопоиске", url=movie.get("url")
             )
         ]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    reply_markup = InlineKeyboardMarkup(keyboard) # Создаем разметку кнопки
 
-    await message.reply_text(text, reply_markup=reply_markup)
+    await message.reply_text(text, reply_markup=reply_markup) # Публикуем сообщение пользователю вместе с кнопкой
 
 
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    from storage import get_stats
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None: # Команда /stats
+    from storage import get_stats  # Импортируем функцию получения статистики
 
-    total, top_movies = get_stats()
-    lines = [f"Всего запросов: {total}"]
-    if top_movies:
-        lines.append("\nТоп фильмов по запросам:")
-        for title, count in top_movies:
-            lines.append(f"• {title} — {count}")
+    total, top_movies = get_stats() # Получаем общую статистику и топ фильмов
+    lines = [f"Всего запросов: {total}"] # Формируем начальную строку отчета
+    if top_movies: # Если есть топ фильмы 
+        lines.append("\nТоп фильмов по запросам:") # Добавляем заголовок раздела
+        for title, count in top_movies: # Проходим по списку топ фильмов
+            lines.append(f"• {title} — {count}") # Формируем строки с именем фильма и количеством запросов
     else:
-        lines.append("Пока статистики нет — сделайте первые запросы 🙂")
+        lines.append("Пока статистики нет — сделайте первые запросы 🙂") # Если статистики пока нет
 
-    await update.message.reply_text("\n".join(lines))
+    await update.message.reply_text("\n".join(lines))  # Отправляем отчет пользователю
 
 
-def main() -> None:
-    if not BOT_TOKEN:
-        raise RuntimeError("BOT_TOKEN не задан в .env")
+def main() -> None: # Главная функция запуска бота
+    if not BOT_TOKEN: # Проверяем наличие токена
+        raise RuntimeError("BOT_TOKEN не задан в .env") # Если токен не указан, выбрасываем ошибку
 
-    init_db()
+    init_db()  # Инициализируем базу данных (если таблица еще не создана)
 
-    application = (
+
+    application = ( # Создаем приложение Telegram Bot
         ApplicationBuilder()
-        .token(BOT_TOKEN)
+        .token(BOT_TOKEN) # Присваиваем токен боту
         .build()
     )
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(CommandHandler("start", start)) # Регистрация обработчика команды /start
+    application.add_handler(CommandHandler("help", help_command))  # Регистрация обработчика команды /help
+    application.add_handler(CommandHandler("stats", stats)) # Регистрация обработчика команды /stats
     application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link)
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link) # Регистрация обработчика входящих сообщений
     )
 
     application.run_polling()
